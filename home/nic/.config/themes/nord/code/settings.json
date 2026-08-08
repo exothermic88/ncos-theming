@@ -1,0 +1,14 @@
+{
+  "C_Cpp.default.compilerPath": "/usr/bin/g++",
+  "security.workspace.trust.untrustedFiles": "open",
+  "workbench.colorCustomizations": null,
+  "window.autoDetectColorScheme": true,
+  "terminal.integrated.shellIntegration.enabled": false,
+  "workbench.editor.showTabs": "single",
+  "workbench.activityBar.location": "hidden",
+  "editor.minimap.enabled": false,
+  "editor.renderWhitespace": "all",
+  "window.menuBarVisibility": "toggle",
+  "workbench.preferredDarkColorTheme": "Dark+",
+  "workbench.sideBar.location": "right"
+}
