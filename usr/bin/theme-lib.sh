@@ -6,6 +6,7 @@
 
 AWWW_STAMP="$HOME/.cache/awww-last-set"
 THEMES_BASE="$HOME/.config/themes"
+DUAL_CACHE="$HOME/.cache/awww-dual"
 
 # The only cosmic dirs that are theme-specific; everything else is shared
 # live config and never moves on a theme switch.
@@ -21,12 +22,74 @@ get_current_theme() { cat "$HOME/.current_theme" 2>/dev/null || echo nord; }
 theme_wall_dir()    { echo "$HOME/.config/wallpapers/$1"; }
 wallpaper_theme()   { basename "$(dirname "$1")"; }
 
+# Panoramas meant to span all monitors are marked by "dual" in the
+# filename; everything else repeats per monitor as usual.
+is_dual_wallpaper() {
+    local name
+    name=$(basename "$1")
+    [[ "${name,,}" == *dual* ]]
+}
+
 # All wallpapers across every theme folder, full paths, sorted so they
 # group by theme folder.
 list_all_wallpapers() {
     find "$HOME/.config/wallpapers" -mindepth 2 -maxdepth 2 -type f \
         \( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" -o -iname "*.webp" \) \
         2>/dev/null | sort
+}
+
+# Enabled outputs as "x y width height name" lines sorted left-to-right,
+# geometry taken from cosmic-randr's current mode. Prints nothing when
+# cosmic-randr is unavailable, in which case dual splitting is skipped.
+list_outputs_lr() {
+    cosmic-randr list 2>/dev/null \
+        | sed 's/\x1b\[[0-9;]*m//g' \
+        | awk '
+            /^[^ ].*\(enabled\)/ { name = $1 }
+            /^  Position:/       { split($2, p, ","); x = p[1]; y = p[2] }
+            /\(current\)/ && name != "" {
+                split($1, m, "x")
+                print x, y, m[1], m[2], name
+                name = ""
+            }' \
+        | sort -n -k1,1
+}
+
+# split_dual_wallpaper <img> — cut a panorama into one tile per output,
+# scaled to cover the combined monitor area. Tiles are cached under
+# DUAL_CACHE keyed on image path+mtime+layout. Prints "name<TAB>tile"
+# lines; fails without output when there are fewer than 2 outputs or a
+# tile cannot be produced (caller then falls back to per-monitor).
+split_dual_wallpaper() {
+    local img="$1" outputs key
+    outputs=$(list_outputs_lr)
+    [ "$(grep -c . <<< "$outputs")" -ge 2 ] || return 1
+
+    key=$(printf '%s|%s|%s' "$img" "$(stat -c %Y "$img" 2>/dev/null)" "$outputs" \
+        | md5sum | cut -d' ' -f1)
+    mkdir -p "$DUAL_CACHE"
+
+    # Bounding box of all outputs = the canvas the panorama must cover.
+    local minx miny W H
+    read -r minx miny W H < <(awk '
+        NR == 1 { minx = $1; miny = $2; maxx = $1 + $3; maxy = $2 + $4; next }
+        { if ($1 < minx) minx = $1
+          if ($2 < miny) miny = $2
+          if ($1 + $3 > maxx) maxx = $1 + $3
+          if ($2 + $4 > maxy) maxy = $2 + $4 }
+        END { print minx, miny, maxx - minx, maxy - miny }' <<< "$outputs")
+
+    local x y w h name tile
+    while read -r x y w h name; do
+        tile="$DUAL_CACHE/$key-$name.png"
+        if [ ! -f "$tile" ]; then
+            magick "$img" \
+                -resize "${W}x${H}^" -gravity center -extent "${W}x${H}" \
+                +gravity -crop "${w}x${h}+$((x - minx))+$((y - miny))" +repage \
+                "$tile" 2>/dev/null || return 1
+        fi
+        printf '%s\t%s\n' "$name" "$tile"
+    done <<< "$outputs"
 }
 
 # While the daemon is down, cosmic-bg's wallpaper shows through — sync its
@@ -105,16 +168,31 @@ switch_theme() {
 }
 
 # set_wallpaper <path> [transition] [force]
+# "*dual*" panoramas are split into per-output tiles so they span all
+# monitors; state still records the original panorama path.
 set_wallpaper() {
-    local img="$1" trans="${2:-center}" theme
+    local img="$1" trans="${2:-center}" theme tiles
     theme=$(get_current_theme)
     if [ "$3" = "force" ] || awww_needs_heal; then
         restart_awww
     fi
-    awww img "$img" \
-        --transition-type "$trans" \
-        --transition-step 90 \
-        --transition-fps 60 || return 1
+    if is_dual_wallpaper "$img" && tiles=$(split_dual_wallpaper "$img"); then
+        local name tile pids=() rc=0
+        while IFS=$'\t' read -r name tile; do
+            awww img "$tile" -o "$name" \
+                --transition-type "$trans" \
+                --transition-step 90 \
+                --transition-fps 60 &
+            pids+=($!)
+        done <<< "$tiles"
+        for p in "${pids[@]}"; do wait "$p" || rc=1; done
+        [ "$rc" -eq 0 ] || return 1
+    else
+        awww img "$img" \
+            --transition-type "$trans" \
+            --transition-step 90 \
+            --transition-fps 60 || return 1
+    fi
     mkdir -p "$(dirname "$AWWW_STAMP")" "$THEMES_BASE/$theme"
     touch "$AWWW_STAMP"
     printf '%s\n' "$img" > "$THEMES_BASE/$theme/.current_wallpaper"

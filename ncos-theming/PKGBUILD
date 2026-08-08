@@ -2,12 +2,12 @@
 # No source=() — package() copies the scripts straight from the theming
 # repo checkout via $startdir, so makepkg must run inside this directory.
 pkgname=ncos-theming
-pkgver=1.0
+pkgver=1.1
 pkgrel=1
 pkgdesc="NCOS theme and wallpaper switching scripts (awww-based, COSMIC)"
 arch=('any')
 license=('GPL')
-depends=('bash' 'rofi' 'awww')
+depends=('bash' 'rofi' 'awww' 'imagemagick' 'cosmic-randr')
 
 package() {
     local scripts=(
