@@ -163,6 +163,9 @@ switch_theme() {
     [ -d "$THEMES_BASE/$new" ] || { echo "Theme directory not found: $THEMES_BASE/$new"; return 2; }
     backup_theme_configs "$current"
     restore_theme_configs "$new"
+    # GTK caches the old theme's generated config; remove it so GTK
+    # theming regenerates for the incoming theme.
+    rm -rf "$HOME/.config/gtk-3.0" "$HOME/.config/gtk-4.0"
     echo "$new" > "$HOME/.current_theme"
     return 0
 }
