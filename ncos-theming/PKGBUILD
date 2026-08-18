@@ -3,7 +3,7 @@
 # repo checkout via $startdir, so makepkg must run inside this directory.
 pkgname=ncos-theming
 pkgver=1.1
-pkgrel=1
+pkgrel=2
 pkgdesc="NCOS theme and wallpaper switching scripts (awww-based, COSMIC)"
 arch=('any')
 license=('GPL')
